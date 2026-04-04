@@ -72,18 +72,24 @@ class netnode(object):
     getblob = _ida_netnode.netnode_getblob
     setblob = _ida_netnode.netnode_setblob
     delblob = _ida_netnode.netnode_delblob
+    if hasattr(_ida_netnode, 'netnode_blobshift'):  # >= 8.3
+        moveblob = _ida_netnode.netnode_blobshift
+    else:   # XXX: "might" have the exact same effect...
+        moveblob = _ida_netnode.netnode_supshift
 
     altdel = _ida_netnode.netnode_altdel
     altlast = _ida_netnode.netnode_altlast
     altprev = _ida_netnode.netnode_altprev
     altset = _ida_netnode.netnode_altset
     altval = _ida_netnode.netnode_altval
+    altmove = _ida_netnode.netnode_altshift
 
     charlast = _ida_netnode.netnode_charlast
     charprev = _ida_netnode.netnode_charprev
     chardel = _ida_netnode.netnode_chardel
     charset = _ida_netnode.netnode_charset
     charval = _ida_netnode.netnode_charval
+    charmove = _ida_netnode.netnode_charshift
 
     hashdel = _ida_netnode.netnode_hashdel
     hashlast = _ida_netnode.netnode_hashlast
@@ -102,6 +108,7 @@ class netnode(object):
     supset = _ida_netnode.netnode_supset
     supstr = _ida_netnode.netnode_supstr
     supval = _ida_netnode.netnode_supval
+    supmove = _ida_netnode.netnode_supshift
 
     valobj = _ida_netnode.netnode_valobj
     valstr = _ida_netnode.netnode_valstr
