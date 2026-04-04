@@ -848,8 +848,10 @@ class hash(object):
         except ValueError:
             l1, l2 = 0, 2
 
+        # iterate through all of the hash keys and collect each of the values in
+        # all of the supported formats so that we can format them for output.
         for index, key in enumerate(cls.fiter(nodeidx, tag=tag)):
-            value = "{:<{:d}s} : default={!r}, bytes={!r}, int={:#x}({:d})".format("{!r}".format(cls.get(nodeidx, key, tag=tag)), l2, cls.get(nodeidx, key, None, tag=tag), cls.get(nodeidx, key, bytes, tag=tag), cls.get(nodeidx, key, int, tag=tag), cls.get(nodeidx, key, int, tag=tag))
+            value = "{:<{:d}s} : default={!r}, bytes={!r}, int={:#x} ({:d})".format("{!r}".format(cls.get(nodeidx, key, tag=tag)), l2, cls.get(nodeidx, key, None, tag=tag), cls.get(nodeidx, key, bytes, tag=tag), cls.get(nodeidx, key, int, tag=tag), cls.get(nodeidx, key, int, tag=tag))
             res.append("[{:d}] {:<{:d}s} -> {:s}".format(index, key, l1, value))
         if not res:
             description = "{:#x}".format(nodeidx) if isinstance(nodeidx, six.integer_types) else "{!r}".format(nodeidx)
