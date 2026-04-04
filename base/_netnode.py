@@ -382,16 +382,19 @@ class value(object):
 
         if type in {None}:
             return netnode.valobj(node)
+        elif issubclass(type, six.integer_types):
+            return netnode.long_value(node)
         elif issubclass(type, memoryview):
             res = netnode.valobj(node)
             return res and memoryview(res)
         elif issubclass(type, bytes):
-            res = netnode.valstr(node)
+            res = netnode.valobj(node)
             return res and bytes(res)
+        elif issubclass(type, bytearray):
+            res = netnode.valobj(node)
+            return res and bytearray(res)
         elif issubclass(type, six.string_types):
             return netnode.valstr(node)
-        elif issubclass(type, six.integer_types):
-            return netnode.long_value(node)
         description = "{:#x}".format(nodeidx) if isinstance(nodeidx, six.integer_types) else "{!r}".format(nodeidx)
         raise internal.exceptions.InvalidTypeOrValueError(u"{:s}.get({:#x}, type={!r}) : An unsupported type ({!r}) was requested for the netnode's value.".format('.'.join([__name__, cls.__name__]), description, type, type))
 
