@@ -72,18 +72,24 @@ class netnode(object):
     getblob = _ida_netnode.netnode_getblob
     setblob = _ida_netnode.netnode_setblob
     delblob = _ida_netnode.netnode_delblob
+    if hasattr(_ida_netnode, 'netnode_blobshift'):  # >= 8.3
+        moveblob = _ida_netnode.netnode_blobshift
+    else:   # XXX: "might" have the exact same effect...
+        moveblob = _ida_netnode.netnode_supshift
 
     altdel = _ida_netnode.netnode_altdel
     altlast = _ida_netnode.netnode_altlast
     altprev = _ida_netnode.netnode_altprev
     altset = _ida_netnode.netnode_altset
     altval = _ida_netnode.netnode_altval
+    altmove = _ida_netnode.netnode_altshift
 
     charlast = _ida_netnode.netnode_charlast
     charprev = _ida_netnode.netnode_charprev
     chardel = _ida_netnode.netnode_chardel
     charset = _ida_netnode.netnode_charset
     charval = _ida_netnode.netnode_charval
+    charmove = _ida_netnode.netnode_charshift
 
     hashdel = _ida_netnode.netnode_hashdel
     hashlast = _ida_netnode.netnode_hashlast
@@ -102,6 +108,7 @@ class netnode(object):
     supset = _ida_netnode.netnode_supset
     supstr = _ida_netnode.netnode_supstr
     supval = _ida_netnode.netnode_supval
+    supmove = _ida_netnode.netnode_supshift
 
     valobj = _ida_netnode.netnode_valobj
     valstr = _ida_netnode.netnode_valstr
@@ -145,7 +152,12 @@ class utils(object):
     @classmethod
     def get(cls, index):
         '''Return the netnode for the provided `index`.'''
-        return netnode.get(index)
+        if isinstance(index, (six.integer_types, six.string_types)):
+            return netnode.get(index)
+
+        # in case we were given an instance of a netnode object.
+        realindex = netnode.index(index)
+        return netnode.get(realindex)
 
     @classmethod
     def range(cls):
@@ -315,8 +327,15 @@ def has(name):
     '''Return whether the netnode with the given `name` exists in the database or not.'''
     if isinstance(name, six.integer_types):
         return netnode.exist(name)
-    res = internal.utils.string.to(name)
-    return netnode.exist_name(res)
+
+    # if we were given a string, then use the correct api.
+    elif isinstance(name, six.string_types):
+        res = internal.utils.string.to(name)
+        return netnode.exist_name(res)
+
+    # if we were given an instance of a netnode, get the index and retry things.
+    realindex = netnode.index(name)
+    return netnode.exist(realindex)
 
 def get(name):
     '''Get (or create) a netnode with the given `name`, and return its identifier.'''
@@ -333,7 +352,17 @@ def get(name):
 def remove(nodeidx):
     '''Remove the netnode with the identifier `nodeidx`.'''
     node = utils.get(nodeidx)
-    return netnode.kill(node)
+    index = netnode.index(node)
+
+    # if the netnode does not exist, then there's no way to remove it.
+    ok = True if netnode.exist(index) else False
+
+    # if the netnode does exist, then go ahead and "kill" it. if it still
+    # exists, then we weren't able to kill it and we return false.
+    if ok:
+        _void = netnode.kill(node)
+        ok = not netnode.exist(index)
+    return ok
 
 ### node name
 class name(object):
@@ -382,16 +411,19 @@ class value(object):
 
         if type in {None}:
             return netnode.valobj(node)
+        elif issubclass(type, six.integer_types):
+            return netnode.long_value(node)
         elif issubclass(type, memoryview):
             res = netnode.valobj(node)
             return res and memoryview(res)
         elif issubclass(type, bytes):
-            res = netnode.valstr(node)
+            res = netnode.valobj(node)
             return res and bytes(res)
+        elif issubclass(type, bytearray):
+            res = netnode.valobj(node)
+            return res and bytearray(res)
         elif issubclass(type, six.string_types):
             return netnode.valstr(node)
-        elif issubclass(type, six.integer_types):
-            return netnode.long_value(node)
         description = "{:#x}".format(nodeidx) if isinstance(nodeidx, six.integer_types) else "{!r}".format(nodeidx)
         raise internal.exceptions.InvalidTypeOrValueError(u"{:s}.get({:#x}, type={!r}) : An unsupported type ({!r}) was requested for the netnode's value.".format('.'.join([__name__, cls.__name__]), description, type, type))
 
@@ -431,10 +463,10 @@ class blob(object):
     This namespace is used to interact with the blob assigned to a given netnode.
     """
     @classmethod
-    def has(cls, nodeidx, tag):
+    def has(cls, nodeidx, tag, start=0):
         '''Return whether the node identified by `nodeidx` has a blob associated with it.'''
         node = utils.get(nodeidx)
-        res = netnode.blobsize(node, 0, tag)
+        res = netnode.blobsize(node, start, tag)
         return res > 0
 
     @classmethod
@@ -464,7 +496,17 @@ class blob(object):
         If an offset is provided as `start`, then remove the data at the given offset.
         """
         node = utils.get(nodeidx)
-        return netnode.delblob(node, start, tag)
+
+        # first grab the size so that we can verify that there is something to
+        # remove. if there's no size, then we can just return a failure.
+        size = netnode.blobsize(node, start, tag)
+        if not(size > 0):
+            return False
+
+        # now we can actually remove the blob and then verify that we actually
+        # removed something by checking the removed size with our preserved one.
+        removed = netnode.delblob(node, start, tag)
+        return True if removed > 0 else False
 
     @classmethod
     def size(cls, nodeidx, tag, start=0):
@@ -813,8 +855,10 @@ class hash(object):
         except ValueError:
             l1, l2 = 0, 2
 
+        # iterate through all of the hash keys and collect each of the values in
+        # all of the supported formats so that we can format them for output.
         for index, key in enumerate(cls.fiter(nodeidx, tag=tag)):
-            value = "{:<{:d}s} : default={!r}, bytes={!r}, int={:#x}({:d})".format("{!r}".format(cls.get(nodeidx, key, tag=tag)), l2, cls.get(nodeidx, key, None, tag=tag), cls.get(nodeidx, key, bytes, tag=tag), cls.get(nodeidx, key, int, tag=tag), cls.get(nodeidx, key, int, tag=tag))
+            value = "{:<{:d}s} : default={!r}, bytes={!r}, int={:#x} ({:d})".format("{!r}".format(cls.get(nodeidx, key, tag=tag)), l2, cls.get(nodeidx, key, None, tag=tag), cls.get(nodeidx, key, bytes, tag=tag), cls.get(nodeidx, key, int, tag=tag), cls.get(nodeidx, key, int, tag=tag))
             res.append("[{:d}] {:<{:d}s} -> {:s}".format(index, key, l1, value))
         if not res:
             description = "{:#x}".format(nodeidx) if isinstance(nodeidx, six.integer_types) else "{!r}".format(nodeidx)
